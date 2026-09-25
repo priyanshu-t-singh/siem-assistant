@@ -1,18 +1,25 @@
 """
-Result → analyst-style summary via Claude.
+Result → analyst-style summary via LiteLLM.
+
+Provider and model are controlled by the LLM_MODEL env var (same as llm_query_gen).
 
 Public API:
     summarize(user_question: str, query_used: dict, results: dict) -> str
-        Returns a plain-text summary of the query results.
 """
 
 import json
+import logging
 import os
 
-import anthropic
+import litellm
 
-_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-MODEL = "claude-sonnet-4-5"
+logger = logging.getLogger(__name__)
+
+MODEL = os.environ.get("LLM_MODEL", "gemini/gemini-2.0-flash")
+
+litellm.suppress_debug_info = True
+if os.environ.get("LITELLM_DEBUG"):
+    litellm.set_verbose = True
 
 SYSTEM_PROMPT = """\
 You are a senior security analyst assistant for a SIEM (Security Information and Event Management) system.
@@ -43,7 +50,6 @@ def summarize(user_question: str, query_used: dict, results: dict) -> str:
     Returns:
         A plain-text summary string.
     """
-    # Serialize results compactly — don't dump huge blobs
     results_text = json.dumps(results, indent=2, default=str)
     if len(results_text) > 8000:
         results_text = results_text[:8000] + "\n... [truncated for brevity]"
@@ -59,14 +65,16 @@ Total matching documents: {results.get('total', 'unknown')}
 Please summarize these findings for a security analyst.
 """
 
-    response = _client.messages.create(
+    response = litellm.completion(
         model=MODEL,
         max_tokens=512,
-        system=SYSTEM_PROMPT,
-        messages=[{"role": "user", "content": user_message}],
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": user_message},
+        ],
     )
 
-    return response.content[0].text.strip()
+    return response.choices[0].message.content.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -74,7 +82,9 @@ Please summarize these findings for a security analyst.
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
-    # Sample result: top IPs aggregation with a suspicious offender
+    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+    print(f"Using model: {MODEL}\n")
+
     sample_agg_result = {
         "aggregations": {
             "top_ips": {

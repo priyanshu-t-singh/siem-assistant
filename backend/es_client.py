@@ -102,9 +102,16 @@ def run_query(query_body: dict, index: str = INDEX_NAME) -> dict:
 
 
 def ping() -> bool:
-    """Return True if Elasticsearch is reachable."""
+    """
+    Return True if Elasticsearch is reachable.
+
+    Uses info() (GET /) instead of ping() (HEAD /) because ES 8.x returns
+    HTTP 400 on HEAD requests even when fully healthy, causing ping() to
+    always report the cluster as unreachable.
+    """
     try:
-        return get_client().ping()
+        get_client().info()
+        return True
     except Exception:
         return False
 
