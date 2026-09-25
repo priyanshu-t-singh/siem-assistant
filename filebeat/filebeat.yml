@@ -1,0 +1,22 @@
+filebeat.modules:
+  - module: nginx
+    access:
+      enabled: true
+      var.paths: ["/logs/access.log"]
+    error:
+      enabled: false
+
+# Use the nginx ingest pipeline for field extraction
+setup.ilm.enabled: false
+
+output.elasticsearch:
+  hosts: ["elasticsearch:9200"]
+  index: "logs-nginx-access"
+
+setup.template.name: "logs-nginx-access"
+setup.template.pattern: "logs-nginx-access*"
+setup.template.settings:
+  index.number_of_shards: 1
+  index.number_of_replicas: 0
+
+logging.level: info
