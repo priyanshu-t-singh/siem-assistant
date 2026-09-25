@@ -34,12 +34,37 @@ siem-assistant/
 ### Prerequisites
 
 - Docker + Docker Compose
-- Python 3.11+
-- An [Anthropic API key](https://console.anthropic.com/)
+- Python 3.11+ and uv
+- An API key for **any** supported LLM provider (default: Google Gemini)
 
 ---
 
-### Terminal 1 — Start Elasticsearch, Kibana & Filebeat
+### LLM provider setup
+
+This project uses **[LiteLLM](https://github.com/BerriAI/litellm)** — a single unified interface for 100+ LLM providers. You switch providers by changing one env var.
+
+Copy the example env file and fill in your key:
+
+```bash
+cp .env.example .env
+# edit .env — uncomment your provider block and paste your API key
+```
+
+| Provider | `LLM_MODEL` value | API key env var |
+|---|---|---|
+| **Google Gemini** *(default)* | `gemini/gemini-2.0-flash` | `GEMINI_API_KEY` |
+| Google Gemini Pro | `gemini/gemini-1.5-pro` | `GEMINI_API_KEY` |
+| OpenAI | `openai/gpt-4o-mini` | `OPENAI_API_KEY` |
+| Anthropic Claude | `anthropic/claude-sonnet-4-5` | `ANTHROPIC_API_KEY` |
+| Azure OpenAI | `azure/gpt-4o` | `AZURE_API_KEY` + `AZURE_API_BASE` |
+| Cohere | `cohere/command-r-plus` | `COHERE_API_KEY` |
+
+> [!TIP]
+> gemma-4-26b-a4b-it is free-tier eligible and fast — good default for local dev.
+
+---
+
+
 
 ```bash
 docker compose up -d
@@ -62,10 +87,10 @@ Kibana will be available at **http://localhost:5601** (may take another 30–60 
 cd sample-logs
 
 # Stream logs continuously (recommended — keep running while you use the app)
-python generate_logs.py
+uv run python generate_logs.py
 
 # Or write a fixed batch and exit:
-python generate_logs.py --count 1000
+uv run python generate_logs.py --count 1000
 ```
 
 Wait ~30 seconds for Filebeat to pick up and ship the first batch.
@@ -85,12 +110,14 @@ You should see documents with fields like `source.ip`, `http.response.status_cod
 ```bash
 cd backend
 
-pip install -r requirements.txt
+uv sync
 
-export ANTHROPIC_API_KEY=sk-ant-...    # paste your key here
+# Load your provider config (copy from .env.example first)
+export $(grep -v '^#' ../.env | xargs)
 
-uvicorn main:app --reload --port 8000
+uv run uvicorn main:app --reload --port 8000
 ```
+
 
 Confirm it's up:
 
@@ -106,9 +133,11 @@ curl -s http://localhost:8000/health | python -m json.tool
 ### Terminal 4 — Start the frontend
 
 ```bash
-pip install streamlit requests    # skip if already installed
+cd frontend
 
-streamlit run frontend/app.py
+uv sync
+
+uv run streamlit run frontend/app.py
 ```
 
 Open **http://localhost:8501** in your browser.
@@ -121,18 +150,18 @@ Run these before the full stack to verify each layer in isolation.
 
 ```bash
 cd backend
-export ANTHROPIC_API_KEY=sk-ant-...
+export $(grep -v '^#' ../.env | xargs)   # load your provider config
 
-# Step 3 — NL → ES query generation (calls Claude, no ES needed)
-python llm_query_gen.py
+# Step 3 — NL → ES query generation (calls the LLM, no ES needed)
+uv run python llm_query_gen.py
 # Expected: 5 generated query DSL objects printed to stdout
 
 # Step 4 — ES query execution (needs Elasticsearch running)
-python es_client.py
+uv run python es_client.py
 # Expected: trimmed JSON results for 3 hand-written queries
 
-# Step 5 — Result summarization (calls Claude, no ES needed)
-python llm_summarize.py
+# Step 5 — Result summarization (calls the LLM, no ES needed)
+uv run python llm_summarize.py
 # Expected: 3 analyst-style summaries printed to stdout
 ```
 
